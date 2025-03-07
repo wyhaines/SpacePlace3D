@@ -27,6 +27,11 @@ window.orientationReticleElement = null; // Element for orientation reticle
 function initControls() {
     window.isMobile = detectMobile();
     
+    // First check and clean up any duplicate UI elements
+    if (typeof removeDuplicateReticles === 'function') {
+        removeDuplicateReticles();
+    }
+    
     // Set up mouse/touch controls
     document.addEventListener('mousemove', onPointerMove);
     document.addEventListener('touchmove', onPointerMove, { passive: false });
@@ -53,9 +58,24 @@ function initControls() {
     window.cameraRotation = { x: 0, y: 0, z: 0 };
     window.rotationSpeed = { x: 0, y: 0, z: 0 };
     
+    // Make sure visual range is set properly
+    if (typeof Universe !== 'undefined' && Universe.instance) {
+        window.visualRange = Universe.instance.visual_range || 5000.0;
+    } else {
+        window.visualRange = 5000.0; // Default if Universe not defined
+    }
+    
     // Create displays
     window.rotationDisplayElement = createRotationDisplay();
     window.orientationReticleElement = createOrientationReticle();
+    
+    // Position camera properly behind ship at initialization
+    if (ship && camera) {
+        // Position camera behind ship
+        const cameraOffset = new THREE.Vector3(0, 5, -20);
+        camera.position.copy(ship.position).add(cameraOffset);
+        camera.lookAt(ship.position);
+    }
     
     // Set up window resize handler
     window.addEventListener('resize', function() {
@@ -292,6 +312,20 @@ function updateThrustDisplay() {
 }
 
 // Function to update camera position and rotation
+// Debug function to help fix camera and ship positioning
+function debugShipVisibility() {
+    console.log("Camera position:", camera.position);
+    console.log("Ship position:", ship.position);
+    console.log("Camera-ship offset:", {
+        x: ship.position.x - camera.position.x,
+        y: ship.position.y - camera.position.y,
+        z: ship.position.z - camera.position.z
+    });
+    console.log("Ship view offset:", window.shipViewOffset);
+    console.log("Camera rotation:", window.cameraRotation);
+}
+
+// Update the updateCameraPosition function to ensure ship is visible
 function updateCameraPosition() {
     if (!ship || !camera) return;
     
@@ -308,25 +342,8 @@ function updateCameraPosition() {
     if (window.cameraRotation.z > Math.PI * 2) window.cameraRotation.z -= Math.PI * 2;
     if (window.cameraRotation.z < 0) window.cameraRotation.z += Math.PI * 2;
     
-    // 2. Create a quaternion for the camera's orientation
-    const quaternion = new THREE.Quaternion();
-    const euler = new THREE.Euler(window.cameraRotation.x, window.cameraRotation.y, window.cameraRotation.z, 'YXZ');
-    quaternion.setFromEuler(euler);
-    
-    // 3. Set camera rotation
-    camera.rotation.copy(euler);
-    
-    // 4. Position the ship in front of the camera
-    window.shipForwardVector.set(0, 0, 1);
-    window.shipForwardVector.applyQuaternion(quaternion);
-    
-    // Position ship in front of camera with offset
-    const shipOffsetVector = new THREE.Vector3(window.shipViewOffset.x, window.shipViewOffset.y, window.shipViewOffset.z);
-    shipOffsetVector.applyQuaternion(quaternion);
-    ship.position.copy(camera.position).add(shipOffsetVector);
-    
-    // 5. Make the ship model always appear level with the camera's view
-    // This way the ship always looks "flat" to the player regardless of pitch
+    // 2. Set ship rotation first (ship rotation drives movement direction)
+    // Make the ship model always appear level with the camera's view
     const shipLevelQuaternion = new THREE.Quaternion();
     
     // Create ship orientation that matches camera yaw but keeps level pitch
@@ -347,16 +364,35 @@ function updateCameraPosition() {
     if (Math.abs(window.rotationSpeed.y) > 0.001) {
         ship.rotation.z += bankAmount * bankDirection;
     }
+    
+    // 3. Calculate the forward vector based on camera orientation
+    const quaternion = new THREE.Quaternion();
+    const euler = new THREE.Euler(window.cameraRotation.x, window.cameraRotation.y, window.cameraRotation.z, 'YXZ');
+    quaternion.setFromEuler(euler);
+    
+    window.shipForwardVector.set(0, 0, 1);
+    window.shipForwardVector.applyQuaternion(quaternion);
+    
+    // 4. Position camera behind ship (CRITICAL DIFFERENCE)
+    // Instead of positioning ship from camera, we position camera from ship
+    const cameraOffset = new THREE.Vector3(0, 5, -20); // Camera is behind (negative Z) and above (positive Y) the ship
+    cameraOffset.applyQuaternion(quaternion);
+    
+    // First update ship position
+    // (camera position will be set relative to ship position)
+    
+    // 5. Camera rotation
+    camera.rotation.copy(euler);
 }
 
-// Update ship position and rotation
+// Update the updateShipPosition function to correctly move ship first, camera second
 function updateShipPosition() {
     // 1. If not actively controlling the ship, apply damping
     if (!window.isPointerDown) {
         applyDamping();
     }
     
-    // 2. Update camera position and rotation based on rotation speeds
+    // 2. Update camera and ship rotations
     updateCameraPosition();
     
     // 3. Handle acceleration/deceleration
@@ -370,14 +406,22 @@ function updateShipPosition() {
     
     // 4. Apply forward/backward movement using the ship's forward vector
     const movement = window.shipForwardVector.clone().multiplyScalar(currentSpeed);
-    camera.position.add(movement);
+    
+    // UPDATED: Move ship first
+    ship.position.add(movement);
+    
+    // UPDATED: Position camera relative to ship
+    const cameraOffset = new THREE.Vector3(0, 5, -20); // Behind and above
+    cameraOffset.applyQuaternion(ship.quaternion);
+    camera.position.copy(ship.position).add(cameraOffset);
+    camera.lookAt(ship.position);
     
     // 5. Update the reticle position
     updateReticlePosition(window.orientationReticleElement);
     
     // 6. Display updates
     // Update coordinates display
-    coordinatesDisplay.textContent = `Position: (${camera.position.x.toFixed(1)}, ${camera.position.y.toFixed(1)}, ${camera.position.z.toFixed(1)})`;
+    coordinatesDisplay.textContent = `Position: (${ship.position.x.toFixed(1)}, ${ship.position.y.toFixed(1)}, ${ship.position.z.toFixed(1)})`;
     
     // Update rotation display - now shows camera rotation
     updateRotationDisplay(window.rotationDisplayElement, window.cameraRotation, window.rotationSpeed);
@@ -397,6 +441,23 @@ function updateShipPosition() {
     
     // 8. Update labels for space objects
     updateObjectLabels();
+}
+
+// Update the visual range for space objects
+function updateVisualRange() {
+    // Set a reasonable default visual range if it's not defined
+    if (!window.visualRange || window.visualRange < 1000) {
+        window.visualRange = 5000.0; // Default visual range
+        
+        // If there's a Universe object with visualRange, copy that value
+        if (typeof Universe !== 'undefined' && Universe.instance && Universe.instance.visual_range) {
+            window.visualRange = Universe.instance.visual_range;
+        }
+    }
+    
+    console.log("Visual range set to:", window.visualRange);
+    
+    // You could add this function call to initControls() to ensure visual range is set properly
 }
 
 // Update the position of object labels in screen space
