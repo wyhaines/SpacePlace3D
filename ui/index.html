@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Space Game</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="game-container">
+        <div id="login-screen">
+            <h2>Space Game</h2>
+            <input type="text" id="player-name" placeholder="Enter your call sign">
+            <br>
+            <button id="join-button">Launch Ship</button>
+        </div>
+        
+        <div id="connection-status" class="disconnected">Offline</div>
+        
+        <div id="game-ui">
+            <div id="ship-status">Hull Integrity: 100%</div>
+            <div id="coordinates">Position: (0, 0, 0)</div>
+        </div>
+        
+        <div id="controls-info">
+            <h3>Controls</h3>
+            <p>W/↑: Forward, S/↓: Backward</p>
+            <p>A/←: Turn Left, D/→: Turn Right</p>
+            <p>Q: Roll Left, E: Roll Right</p>
+            <p>Shift: Move Up, Ctrl: Move Down</p>
+            <p>T: Toggle Travel Mode</p>
+        </div>
+        <button id="controls-button">Show Controls</button>
+        
+        <canvas id="game-canvas"></canvas>
+    </div>
+
+    <!-- External Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <!-- Game Scripts -->
+    <script src="js/config.js"></script>
+    <script src="js/network.js"></script>
+    <script src="js/objects.js"></script>
+    <script src="js/effects.js"></script>
+    <script src="js/controls.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>

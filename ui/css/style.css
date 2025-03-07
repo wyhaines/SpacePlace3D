@@ -1,0 +1,150 @@
+body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background-color: #000;
+    color: #fff;
+    font-family: 'Arial', sans-serif;
+}
+
+#game-container {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+}
+
+#login-screen {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: rgba(0, 0, 0, 0.7);
+    padding: 30px;
+    border-radius: 10px;
+    text-align: center;
+    z-index: 10;
+}
+
+#login-screen input {
+    margin: 10px;
+    padding: 8px;
+    width: 200px;
+    background-color: #111;
+    color: #fff;
+    border: 1px solid #333;
+    border-radius: 4px;
+}
+
+#login-screen button {
+    margin-top: 20px;
+    padding: 10px 20px;
+    background-color: #0066cc;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+#login-screen button:hover {
+    background-color: #0055aa;
+}
+
+#game-ui {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 5;
+    display: none;
+}
+
+#connection-status {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    padding: 5px 10px;
+    border-radius: 4px;
+    z-index: 5;
+}
+
+.connected {
+    background-color: rgba(0, 128, 0, 0.5);
+}
+
+.disconnected {
+    background-color: rgba(255, 0, 0, 0.5);
+}
+
+#game-canvas {
+    width: 100%;
+    height: 100%;
+}
+
+.player-label, .object-label {
+    position: absolute;
+    color: white;
+    background-color: rgba(0, 0, 0, 0.5);
+    padding: 2px 5px;
+    border-radius: 3px;
+    font-size: 12px;
+    user-select: none;
+    pointer-events: none;
+    z-index: 5;
+}
+
+#controls-info {
+    position: absolute;
+    bottom: 40px;
+    left: 10px;
+    color: white;
+    background-color: rgba(0, 0, 0, 0.5);
+    padding: 10px;
+    border-radius: 5px;
+    display: none;
+}
+
+#controls-button {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    background-color: #0066cc;
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+#travel-mode {
+    position: absolute;
+    bottom: 10px;
+    left: 120px;
+    color: white;
+    padding: 5px;
+    background-color: rgba(0, 0, 0, 0.5);
+}
+
+#scan-button {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    padding: 8px 16px;
+    background-color: #0066cc;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+#scan-panel {
+    position: absolute;
+    top: 50px;
+    right: 10px;
+    width: 300px;
+    padding: 10px;
+    background-color: rgba(0, 0, 0, 0.7);
+    color: white;
+    border-radius: 5px;
+    max-height: 400px;
+    overflow-y: auto;
+    display: none;
+}
