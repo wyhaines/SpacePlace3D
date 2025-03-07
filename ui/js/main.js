@@ -9,7 +9,7 @@ function initThreeJS() {
     
     // Create camera
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 10000);
-    camera.position.set(0, 10, 30);
+    camera.position.set(0, 10, -30); // Position camera behind ship initially
     
     // Create renderer
     renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('game-canvas'), antialias: true });
@@ -29,10 +29,6 @@ function initThreeJS() {
     // Handle window resize
     window.addEventListener('resize', onWindowResize);
     
-    // Set up controls
-    document.addEventListener('keydown', onKeyDown);
-    document.addEventListener('keyup', onKeyUp);
-    
     // Start game loop
     animate();
 }
@@ -43,6 +39,8 @@ function animate() {
     
     if (ship) {
         updateShipPosition();
+        // Update the reticles to match ship orientation and movement
+        updateReticles();
     }
     
     // Animate space objects
@@ -64,10 +62,25 @@ function animate() {
     }
     
     // Create a subtle parallax effect for stars based on ship movement
-    if (window.starField) {
+    if (window.starField && ship) {
         window.starField.position.x = -ship.position.x / 1000;
         window.starField.position.y = -ship.position.y / 1000;
         window.starField.position.z = -ship.position.z / 1000;
+    }
+    
+    // Update direction indicator position if touch/mouse is active
+    if (isPointerDown && ship) {
+        const indicator = document.getElementById('direction-indicator');
+        if (indicator) {
+            indicator.style.display = 'block';
+            indicator.style.left = `${pointerX}px`;
+            indicator.style.top = `${pointerY}px`;
+        }
+    } else {
+        const indicator = document.getElementById('direction-indicator');
+        if (indicator) {
+            indicator.style.display = 'none';
+        }
     }
     
     renderer.render(scene, camera);
@@ -76,6 +89,39 @@ function animate() {
 // Initialize the application
 function init() {
     setupUIEventListeners();
+}
+
+// Add the setupUIEventListeners function to create the necessary UI elements
+function setupUIEventListeners() {
+    // Join button
+    joinButton.addEventListener('click', function() {
+        playerName = playerNameInput.value.trim();
+        
+        if (playerName.length < 1) {
+            alert('Please enter a call sign');
+            return;
+        }
+        
+        // Hide login screen, show game UI
+        loginScreen.style.display = 'none';
+        gameUI.style.display = 'block';
+        
+        // Initialize game
+        initThreeJS();
+        connectToServer();
+    });
+    
+    // Controls info toggle
+    document.getElementById('controls-button').addEventListener('click', function() {
+        const controlsInfo = document.getElementById('controls-info');
+        if (controlsInfo.style.display === 'none') {
+            controlsInfo.style.display = 'block';
+            this.textContent = 'Hide Controls';
+        } else {
+            controlsInfo.style.display = 'none';
+            this.textContent = 'Show Controls';
+        }
+    });
 }
 
 // Call init when the page loads

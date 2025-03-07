@@ -44,21 +44,57 @@ function createPlayerShip() {
     // Position the ship
     ship.position.set(0, 0, 0);
     
-    // Set up camera to follow ship
-    updateCameraPosition();
-    
     // Add a UI element for travel mode
     const travelModeDisplay = document.createElement('div');
     travelModeDisplay.id = 'travel-mode';
     travelModeDisplay.textContent = `Travel Mode: ${travelMode}`;
     document.getElementById('game-container').appendChild(travelModeDisplay);
     
-    // Add a scan button
-    const scanButton = document.createElement('button');
-    scanButton.id = 'scan-button';
-    scanButton.textContent = 'Scan Area';
-    scanButton.onclick = sendScanRequest;
-    document.getElementById('game-container').appendChild(scanButton);
+    // Add a thrust display UI element (used by both mobile and desktop)
+    const thrustDisplay = document.createElement('div');
+    thrustDisplay.id = 'thrust-display';
+    thrustDisplay.className = 'thrust-display';
+    thrustDisplay.textContent = 'Thrust: 0%';
+    document.getElementById('game-container').appendChild(thrustDisplay);
+    
+    // Add thrust bar
+    const thrustBarContainer = document.createElement('div');
+    thrustBarContainer.className = 'thrust-bar-container';
+    thrustBarContainer.id = 'thrust-bar-container';
+    
+    const thrustBarFill = document.createElement('div');
+    thrustBarFill.id = 'thrust-bar-fill';
+    thrustBarFill.className = 'thrust-bar-fill';
+    
+    thrustBarContainer.appendChild(thrustBarFill);
+    document.getElementById('game-container').appendChild(thrustBarContainer);
+    
+    // Add a direction indicator element that shows where the touch is targeting
+    const directionIndicator = document.createElement('div');
+    directionIndicator.id = 'direction-indicator';
+    directionIndicator.className = 'direction-indicator';
+    document.getElementById('game-container').appendChild(directionIndicator);
+    
+    // Create control-free area for ship steering
+    const controlFreeArea = document.createElement('div');
+    controlFreeArea.id = 'control-free-area';
+    controlFreeArea.className = 'control-free-area';
+    document.getElementById('game-container').appendChild(controlFreeArea);
+    
+    // Create orientation and movement reticles
+    createReticles();
+    
+    // Add reticle styles to the document
+    addReticleStyles();
+    
+    // Store initial position for movement tracking
+    window.lastShipPosition = ship.position.clone();
+    
+    // Set up camera to follow ship
+    updateCameraPosition();
+    
+    // Initialize the new controls system
+    initControls();
 }
 
 // Create ships for other players
