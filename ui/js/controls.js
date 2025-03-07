@@ -1,23 +1,31 @@
-// Global control variables
-let isMobile = false;
-let isPointerDown = false;
-let pointerX = 0;
-let pointerY = 0;
-let targetRotationY = 0;
-let targetRotationX = 0;
-let thrustLevel = 0; // -100% to 100% (negative is reverse)
-let isBraking = false;
-let touchButtons = {}; // Will hold references to touch control buttons
+// Main Controls Logic - Non-module version
+// This file depends on reticle.js, displays.js, touchControls.js and deviceUtils.js
 
-// Check if device is mobile
-function detectMobile() {
-    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) 
-        || window.innerWidth <= 800;
-}
+// Global control variables
+window.isMobile = false;
+window.isPointerDown = false;
+window.pointerX = 0;
+window.pointerY = 0;
+window.targetRotationY = 0;
+window.targetRotationX = 0;
+window.rotationSpeed = { x: 0, y: 0, z: 0 }; // Current rotation speed in x, y, and z axes
+window.cameraRotation = { x: 0, y: 0, z: 0 }; // Camera rotation (pitch, yaw, roll)
+window.shipForwardVector = new THREE.Vector3(0, 0, 1); // Direction ship is moving
+window.shipViewOffset = { x: 0, y: -1.5, z: 5 }; // Ship position offset from camera view
+window.maxRotationSpeed = 0.03; // Maximum rotation speed in radians per frame
+window.rotationAcceleration = 0.001; // How quickly rotation speed increases
+window.normalDampingStrength = 0.98; // Base damping for all rotations
+window.autoDampingThreshold = 0.015; // Threshold for stronger auto-damping
+window.strongDampingStrength = 0.94; // Stronger damping when over threshold (3-4x effect)
+window.thrustLevel = 0; // -100% to 100% (negative is reverse)
+window.isBraking = false;
+window.touchButtons = {}; // Will hold references to touch control buttons
+window.rotationDisplayElement = null; // Element to display rotation values
+window.orientationReticleElement = null; // Element for orientation reticle
 
 // Initialize controls based on device type
 function initControls() {
-    isMobile = detectMobile();
+    window.isMobile = detectMobile();
     
     // Set up mouse/touch controls
     document.addEventListener('mousemove', onPointerMove);
@@ -32,17 +40,35 @@ function initControls() {
     document.addEventListener('keyup', onKeyUp);
     
     // If mobile device, create touch UI
-    if (isMobile) {
-        createTouchUI();
+    if (window.isMobile) {
+        createTouchUI(
+            increaseThrustLevel, 
+            decreaseThrustLevel, 
+            sendScanRequest, 
+            toggleTravelMode
+        );
     }
     
-    // Set initial rotation targets
-    if (ship) {
-        targetRotationY = ship.rotation.y;
-        targetRotationX = ship.rotation.x;
-    }
+    // Initialize rotation variables
+    window.cameraRotation = { x: 0, y: 0, z: 0 };
+    window.rotationSpeed = { x: 0, y: 0, z: 0 };
     
-    console.log(`Controls initialized for ${isMobile ? 'mobile' : 'desktop'} device`);
+    // Create displays
+    window.rotationDisplayElement = createRotationDisplay();
+    window.orientationReticleElement = createOrientationReticle();
+    
+    // Set up window resize handler
+    window.addEventListener('resize', function() {
+        handleWindowResize(
+            function() { updateReticlePosition(window.orientationReticleElement); },
+            function() { 
+                createTouchUI(increaseThrustLevel, decreaseThrustLevel, 
+                         sendScanRequest, toggleTravelMode);
+            }
+        );
+    });
+    
+    console.log(`Controls initialized for ${window.isMobile ? 'mobile' : 'desktop'} device`);
 }
 
 // Handle pointer (mouse/touch) movement
@@ -51,15 +77,15 @@ function onPointerMove(event) {
     
     // Get pointer position
     if (event.type === 'touchmove') {
-        pointerX = event.touches[0].clientX;
-        pointerY = event.touches[0].clientY;
+        window.pointerX = event.touches[0].clientX;
+        window.pointerY = event.touches[0].clientY;
     } else {
-        pointerX = event.clientX;
-        pointerY = event.clientY;
+        window.pointerX = event.clientX;
+        window.pointerY = event.clientY;
     }
     
     // Always update target rotation to follow pointer direction
-    if (isPointerDown) {
+    if (window.isPointerDown) {
         calculateTargetRotationTowardPointer();
     }
 }
@@ -67,15 +93,15 @@ function onPointerMove(event) {
 // Handle pointer down event
 function onPointerDown(event) {
     event.preventDefault();
-    isPointerDown = true;
+    window.isPointerDown = true;
     
     // Get initial pointer position
     if (event.type === 'touchstart') {
-        pointerX = event.touches[0].clientX;
-        pointerY = event.touches[0].clientY;
+        window.pointerX = event.touches[0].clientX;
+        window.pointerY = event.touches[0].clientY;
     } else {
-        pointerX = event.clientX;
-        pointerY = event.clientY;
+        window.pointerX = event.clientX;
+        window.pointerY = event.clientY;
     }
     
     calculateTargetRotationTowardPointer();
@@ -83,37 +109,76 @@ function onPointerDown(event) {
 
 // Handle pointer up event
 function onPointerUp(event) {
-    isPointerDown = false;
+    window.isPointerDown = false;
+    // Don't immediately zero the rotation speed - let the damping handle it
 }
 
 // Calculate target rotation to turn toward pointer position
 function calculateTargetRotationTowardPointer() {
     if (!ship) return;
     
-    // Get the center of the screen
+    // Use the center of the screen as reference for rotation
     const centerX = window.innerWidth / 2;
     const centerY = window.innerHeight / 2;
     
     // Calculate vector from center to pointer
-    const directionX = pointerX - centerX;
-    const directionY = pointerY - centerY;
+    const directionX = window.pointerX - centerX;
+    const directionY = window.pointerY - centerY;
     
-    // Convert to normalized direction (-1 to 1)
-    const maxDistance = Math.min(window.innerWidth, window.innerHeight) / 2;
-    const normalizedX = Math.max(-1, Math.min(1, directionX / maxDistance));
-    const normalizedY = Math.max(-1, Math.min(1, directionY / maxDistance));
+    // Convert to normalized direction
+    const maxDistance = Math.min(window.innerWidth, window.innerHeight) / 2.5;
+    const normalizedX = directionX / maxDistance;
+    const normalizedY = directionY / maxDistance;
     
-    // Calculate target rotation based on normalized position
-    // This will make the ship turn toward where the pointer is pointing
-    const turnSensitivity = 1.0;
+    // Calculate direction and magnitude
+    const distance = Math.sqrt(normalizedX * normalizedX + normalizedY * normalizedY);
     
-    // Calculate yaw (left/right turning)
-    // Negative X should turn right (negative Y rotation in Three.js)
-    targetRotationY = ship.rotation.y - (normalizedX * turnSensitivity);
+    // Only apply rotation if pointer is outside the deadzone
+    const deadzone = 0.1;
+    if (distance > deadzone) {
+        // Calculate target rotation speeds based on pointer position
+        // Fixed: Clicking above should rotate up (negative X in Three.js)
+        const targetSpeedX = -normalizedY * window.maxRotationSpeed; // Pitch (up/down)
+        const targetSpeedY = -normalizedX * window.maxRotationSpeed; // Yaw (left/right)
+        
+        // Gradually accelerate toward target speeds (smoother control)
+        window.rotationSpeed.x += (targetSpeedX - window.rotationSpeed.x) * window.rotationAcceleration * distance * 20;
+        window.rotationSpeed.y += (targetSpeedY - window.rotationSpeed.y) * window.rotationAcceleration * distance * 20;
+        
+        // Clamp rotation speeds to prevent excessive spinning
+        window.rotationSpeed.x = Math.max(-window.maxRotationSpeed, Math.min(window.maxRotationSpeed, window.rotationSpeed.x));
+        window.rotationSpeed.y = Math.max(-window.maxRotationSpeed, Math.min(window.maxRotationSpeed, window.rotationSpeed.y));
+    } else {
+        // Apply normal damping when no input
+        window.rotationSpeed.x *= window.normalDampingStrength;
+        window.rotationSpeed.y *= window.normalDampingStrength;
+    }
+}
+
+// Apply rotation damping
+function applyDamping() {
+    // Apply normal damping to all axes
+    window.rotationSpeed.x *= window.normalDampingStrength;
+    window.rotationSpeed.y *= window.normalDampingStrength;
+    window.rotationSpeed.z *= window.normalDampingStrength;
     
-    // Calculate pitch (up/down turning)
-    // Negative Y (up on screen) should pitch up (positive X rotation in Three.js)
-    targetRotationX = -normalizedY * turnSensitivity * 0.5; // Limit pitch range
+    // Apply stronger damping when over threshold
+    if (Math.abs(window.rotationSpeed.x) > window.autoDampingThreshold) {
+        window.rotationSpeed.x *= window.strongDampingStrength;
+    }
+    
+    if (Math.abs(window.rotationSpeed.y) > window.autoDampingThreshold) {
+        window.rotationSpeed.y *= window.strongDampingStrength; 
+    }
+    
+    if (Math.abs(window.rotationSpeed.z) > window.autoDampingThreshold) {
+        window.rotationSpeed.z *= window.strongDampingStrength;
+    }
+    
+    // If rotation speed is very low, just zero it out to prevent jittering
+    if (Math.abs(window.rotationSpeed.x) < 0.0001) window.rotationSpeed.x = 0;
+    if (Math.abs(window.rotationSpeed.y) < 0.0001) window.rotationSpeed.y = 0;
+    if (Math.abs(window.rotationSpeed.z) < 0.0001) window.rotationSpeed.z = 0;
 }
 
 // Key down event handler
@@ -130,7 +195,7 @@ function onKeyDown(event) {
     
     // Space bar for braking
     if (event.code === 'Space') {
-        isBraking = true;
+        window.isBraking = true;
     }
     
     // Toggle travel mode with T
@@ -143,6 +208,14 @@ function onKeyDown(event) {
     if (event.code === 'KeyE') {
         sendScanRequest();
     }
+    
+    // Roll control with Q/A
+    if (event.code === 'KeyQ') {
+        window.rotationSpeed.z += 0.01; // Roll left
+    }
+    if (event.code === 'KeyA') {
+        window.rotationSpeed.z -= 0.01; // Roll right
+    }
 }
 
 // Key up event handler
@@ -151,7 +224,7 @@ function onKeyUp(event) {
     
     // Reset braking
     if (event.code === 'Space') {
-        isBraking = false;
+        window.isBraking = false;
     }
     
     if (event.code === 'KeyT') {
@@ -161,22 +234,22 @@ function onKeyUp(event) {
 
 // Increase thrust level (move forward faster)
 function increaseThrustLevel() {
-    thrustLevel = Math.min(100, thrustLevel + 10);
+    window.thrustLevel = Math.min(100, window.thrustLevel + 10);
     updateThrustDisplay();
 }
 
 // Decrease thrust level (slow down or move backward)
 function decreaseThrustLevel() {
-    thrustLevel = Math.max(-100, thrustLevel - 10);
+    window.thrustLevel = Math.max(-100, window.thrustLevel - 10);
     updateThrustDisplay();
 }
 
 // Apply braking (rapidly bring thrust to zero)
 function applyBraking() {
-    if (thrustLevel > 0) {
-        thrustLevel = Math.max(0, thrustLevel - 5);
-    } else if (thrustLevel < 0) {
-        thrustLevel = Math.min(0, thrustLevel + 5);
+    if (window.thrustLevel > 0) {
+        window.thrustLevel = Math.max(0, window.thrustLevel - 5);
+    } else if (window.thrustLevel < 0) {
+        window.thrustLevel = Math.min(0, window.thrustLevel + 5);
     }
     updateThrustDisplay();
 }
@@ -185,9 +258,9 @@ function applyBraking() {
 function updateThrustDisplay() {
     const thrustDisplay = document.getElementById('thrust-display');
     if (thrustDisplay) {
-        const displayValue = thrustLevel >= 0 ? 
-            `Thrust: +${thrustLevel}%` : 
-            `Thrust: ${thrustLevel}%`;
+        const displayValue = window.thrustLevel >= 0 ? 
+            `Thrust: +${window.thrustLevel}%` : 
+            `Thrust: ${window.thrustLevel}%`;
         
         thrustDisplay.textContent = displayValue;
         
@@ -195,21 +268,21 @@ function updateThrustDisplay() {
         const thrustBar = document.getElementById('thrust-bar-fill');
         if (thrustBar) {
             // Handle positive and negative thrust visually
-            if (thrustLevel >= 0) {
-                thrustBar.style.width = `${thrustLevel}%`;
+            if (window.thrustLevel >= 0) {
+                thrustBar.style.width = `${window.thrustLevel}%`;
                 thrustBar.style.marginLeft = '0';
                 
                 // Change color based on thrust level
-                if (thrustLevel > 75) {
+                if (window.thrustLevel > 75) {
                     thrustBar.style.backgroundColor = '#ff3300';
-                } else if (thrustLevel > 40) {
+                } else if (window.thrustLevel > 40) {
                     thrustBar.style.backgroundColor = '#ffaa00';
                 } else {
                     thrustBar.style.backgroundColor = '#00aaff';
                 }
             } else {
                 // For negative thrust, show bar from right to left
-                const absThrust = Math.abs(thrustLevel);
+                const absThrust = Math.abs(window.thrustLevel);
                 thrustBar.style.width = `${absThrust}%`;
                 thrustBar.style.marginLeft = `${100 - absThrust}%`;
                 thrustBar.style.backgroundColor = '#aa00ff'; // Different color for reverse
@@ -218,168 +291,111 @@ function updateThrustDisplay() {
     }
 }
 
-// Update camera to follow ship from behind
+// Function to update camera position and rotation
 function updateCameraPosition() {
-    // Position camera behind the ship (from tail)
-    const cameraOffset = new THREE.Vector3(0, 5, -20); // Negative Z to position behind the ship
-    cameraOffset.applyQuaternion(ship.quaternion);
+    if (!ship || !camera) return;
     
-    camera.position.copy(ship.position).add(cameraOffset);
-    camera.lookAt(ship.position);
-}
-
-// Create touch UI for mobile devices
-function createTouchUI() {
-    const gameContainer = document.getElementById('game-container');
+    // 1. Update the camera's rotation based on our rotation speeds
+    window.cameraRotation.x += window.rotationSpeed.x;
+    window.cameraRotation.y += window.rotationSpeed.y;
+    window.cameraRotation.z += window.rotationSpeed.z;
     
-    // Create container for touch controls
-    const touchControlsContainer = document.createElement('div');
-    touchControlsContainer.id = 'touch-controls';
-    touchControlsContainer.className = 'touch-controls';
+    // Keep rotations within 0-2π range
+    if (window.cameraRotation.y > Math.PI * 2) window.cameraRotation.y -= Math.PI * 2;
+    if (window.cameraRotation.y < 0) window.cameraRotation.y += Math.PI * 2;
+    if (window.cameraRotation.x > Math.PI * 2) window.cameraRotation.x -= Math.PI * 2;
+    if (window.cameraRotation.x < 0) window.cameraRotation.x += Math.PI * 2;
+    if (window.cameraRotation.z > Math.PI * 2) window.cameraRotation.z -= Math.PI * 2;
+    if (window.cameraRotation.z < 0) window.cameraRotation.z += Math.PI * 2;
     
-    // Create thrust control buttons
-    const thrustUpButton = document.createElement('button');
-    thrustUpButton.id = 'thrust-up';
-    thrustUpButton.className = 'touch-button thrust-button';
-    thrustUpButton.innerHTML = '&#9650;'; // Up arrow
-    thrustUpButton.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        increaseThrustLevel();
-    });
+    // 2. Create a quaternion for the camera's orientation
+    const quaternion = new THREE.Quaternion();
+    const euler = new THREE.Euler(window.cameraRotation.x, window.cameraRotation.y, window.cameraRotation.z, 'YXZ');
+    quaternion.setFromEuler(euler);
     
-    const thrustDownButton = document.createElement('button');
-    thrustDownButton.id = 'thrust-down';
-    thrustDownButton.className = 'touch-button thrust-button';
-    thrustDownButton.innerHTML = '&#9660;'; // Down arrow
-    thrustDownButton.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        decreaseThrustLevel();
-    });
+    // 3. Set camera rotation
+    camera.rotation.copy(euler);
     
-    // Create brake button
-    const brakeButton = document.createElement('button');
-    brakeButton.id = 'brake-button';
-    brakeButton.className = 'touch-button brake-button';
-    brakeButton.textContent = 'BRAKE';
-    brakeButton.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        isBraking = true;
-    });
-    brakeButton.addEventListener('touchend', (e) => {
-        e.preventDefault();
-        isBraking = false;
-    });
+    // 4. Position the ship in front of the camera
+    window.shipForwardVector.set(0, 0, 1);
+    window.shipForwardVector.applyQuaternion(quaternion);
     
-    // Create scan button
-    const scanButton = document.createElement('button');
-    scanButton.id = 'scan-button-touch';
-    scanButton.className = 'touch-button action-button';
-    scanButton.textContent = 'SCAN';
-    scanButton.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        sendScanRequest();
-    });
+    // Position ship in front of camera with offset
+    const shipOffsetVector = new THREE.Vector3(window.shipViewOffset.x, window.shipViewOffset.y, window.shipViewOffset.z);
+    shipOffsetVector.applyQuaternion(quaternion);
+    ship.position.copy(camera.position).add(shipOffsetVector);
     
-    // Create travel mode toggle button
-    const travelModeButton = document.createElement('button');
-    travelModeButton.id = 'travel-mode-touch';
-    travelModeButton.className = 'touch-button action-button';
-    travelModeButton.textContent = 'WARP';
-    travelModeButton.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        toggleTravelMode();
-    });
+    // 5. Make the ship model always appear level with the camera's view
+    // This way the ship always looks "flat" to the player regardless of pitch
+    const shipLevelQuaternion = new THREE.Quaternion();
     
-    // Create thrust level display
-    const thrustDisplay = document.createElement('div');
-    thrustDisplay.id = 'thrust-display';
-    thrustDisplay.className = 'thrust-display';
-    thrustDisplay.textContent = 'Thrust: 0%';
+    // Create ship orientation that matches camera yaw but keeps level pitch
+    const shipEuler = new THREE.Euler(0, window.cameraRotation.y, 0, 'YXZ');
+    shipLevelQuaternion.setFromEuler(shipEuler);
     
-    // Create thrust bar
-    const thrustBarContainer = document.createElement('div');
-    thrustBarContainer.className = 'thrust-bar-container';
+    // Apply roll from camera to ship
+    const rollQuat = new THREE.Quaternion();
+    rollQuat.setFromAxisAngle(new THREE.Vector3(0, 0, 1), window.cameraRotation.z);
+    shipLevelQuaternion.multiply(rollQuat);
     
-    const thrustBarFill = document.createElement('div');
-    thrustBarFill.id = 'thrust-bar-fill';
-    thrustBarFill.className = 'thrust-bar-fill';
+    // Set ship rotation
+    ship.setRotationFromQuaternion(shipLevelQuaternion);
     
-    thrustBarContainer.appendChild(thrustBarFill);
-    
-    // Add all elements to the controls container
-    touchControlsContainer.appendChild(thrustUpButton);
-    touchControlsContainer.appendChild(thrustDisplay);
-    touchControlsContainer.appendChild(thrustBarContainer);
-    touchControlsContainer.appendChild(thrustDownButton);
-    touchControlsContainer.appendChild(brakeButton);
-    touchControlsContainer.appendChild(scanButton);
-    touchControlsContainer.appendChild(travelModeButton);
-    
-    // Add the controls container to the game container
-    gameContainer.appendChild(touchControlsContainer);
-    
-    // Store references to touch buttons
-    touchButtons = {
-        thrustUp: thrustUpButton,
-        thrustDown: thrustDownButton,
-        brake: brakeButton,
-        scan: scanButton,
-        travelMode: travelModeButton
-    };
+    // Add a slight bank effect during yaw rotation
+    const bankAmount = Math.min(Math.abs(window.rotationSpeed.y * 15), 0.3);
+    const bankDirection = window.rotationSpeed.y > 0 ? -1 : 1; // Bank left when turning right
+    if (Math.abs(window.rotationSpeed.y) > 0.001) {
+        ship.rotation.z += bankAmount * bankDirection;
+    }
 }
 
 // Update ship position and rotation
 function updateShipPosition() {
-    // 1. Handle rotation (interpolate smoothly toward target rotation)
-    const rotationInterpolationFactor = 0.05;
+    // 1. If not actively controlling the ship, apply damping
+    if (!window.isPointerDown) {
+        applyDamping();
+    }
     
-    // Interpolate Y rotation (yaw)
-    ship.rotation.y = THREE.MathUtils.lerp(
-        ship.rotation.y, 
-        targetRotationY, 
-        rotationInterpolationFactor
-    );
+    // 2. Update camera position and rotation based on rotation speeds
+    updateCameraPosition();
     
-    // Interpolate X rotation (pitch)
-    ship.rotation.x = THREE.MathUtils.lerp(
-        ship.rotation.x, 
-        targetRotationX, 
-        rotationInterpolationFactor
-    );
-    
-    // 2. Handle acceleration/deceleration
-    if (isBraking) {
+    // 3. Handle acceleration/deceleration
+    if (window.isBraking) {
         applyBraking();
     }
     
     // Calculate current ship speed based on thrust level
     const maxSpeed = travelSpeed; // Base max speed affected by travel mode
-    const currentSpeed = (thrustLevel / 100) * maxSpeed;
+    const currentSpeed = (window.thrustLevel / 100) * maxSpeed;
     
-    // Apply forward/backward movement
-    ship.translateZ(currentSpeed);
+    // 4. Apply forward/backward movement using the ship's forward vector
+    const movement = window.shipForwardVector.clone().multiplyScalar(currentSpeed);
+    camera.position.add(movement);
     
-    // 3. Display updates
+    // 5. Update the reticle position
+    updateReticlePosition(window.orientationReticleElement);
+    
+    // 6. Display updates
     // Update coordinates display
-    coordinatesDisplay.textContent = `Position: (${ship.position.x.toFixed(1)}, ${ship.position.y.toFixed(1)}, ${ship.position.z.toFixed(1)})`;
+    coordinatesDisplay.textContent = `Position: (${camera.position.x.toFixed(1)}, ${camera.position.y.toFixed(1)}, ${camera.position.z.toFixed(1)})`;
     
-    // 4. Send position update to server
+    // Update rotation display - now shows camera rotation
+    updateRotationDisplay(window.rotationDisplayElement, window.cameraRotation, window.rotationSpeed);
+    
+    // 7. Send position update to server
     if (connected) {
         const positionMessage = {
             type: 'position',
             x: ship.position.x,
             y: ship.position.y,
             z: ship.position.z,
-            rotationY: ship.rotation.y,
-            rotationZ: ship.rotation.z
+            rotationY: window.cameraRotation.y,
+            rotationZ: window.cameraRotation.z
         };
         socket.send(JSON.stringify(positionMessage));
     }
     
-    // 5. Update camera position to follow ship
-    updateCameraPosition();
-    
-    // 6. Update labels for space objects
+    // 8. Update labels for space objects
     updateObjectLabels();
 }
 
@@ -441,29 +457,6 @@ function updateObjectLabels() {
             }
         } else {
             label.style.display = 'none';
-        }
-    }
-}
-
-// Handle window resize
-function onWindowResize() {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    
-    // Check if device type changed (e.g., window resized to mobile size)
-    const wasMobile = isMobile;
-    isMobile = detectMobile();
-    
-    if (wasMobile !== isMobile) {
-        // Device type changed, reinitialize controls
-        const touchControls = document.getElementById('touch-controls');
-        if (touchControls) {
-            touchControls.remove();
-        }
-        
-        if (isMobile) {
-            createTouchUI();
         }
     }
 }
