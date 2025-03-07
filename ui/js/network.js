@@ -38,7 +38,6 @@ function connectToServer() {
         socket.onmessage = function(event) {
             try {
                 const message = JSON.parse(event.data);
-                console.log('Received message:', message);
                 handleServerMessage(message);
             } catch (error) {
                 console.error('Error parsing message:', error);

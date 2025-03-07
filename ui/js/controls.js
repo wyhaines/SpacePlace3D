@@ -230,11 +230,11 @@ function onKeyDown(event) {
     }
     
     // Roll control with Q/A
-    if (event.code === 'KeyQ') {
-        window.rotationSpeed.z += 0.01; // Roll left
+    if (event.code === 'KeyD') {
+        window.rotationSpeed.z += 0.01; // Roll right
     }
     if (event.code === 'KeyA') {
-        window.rotationSpeed.z -= 0.01; // Roll right
+        window.rotationSpeed.z -= 0.01; // Roll left
     }
 }
 
